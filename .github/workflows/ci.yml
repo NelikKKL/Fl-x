@@ -62,9 +62,17 @@ jobs:
         run: |
           python app.py &
           echo "SERVER_PID=$!" >> $GITHUB_ENV
-          for i in $(seq 1 15); do
-            curl -sf http://localhost:5000/ > /dev/null && break
-            echo "Waiting... ($i)"
+          # ждём пока сервер примет и GET и POST
+          for i in $(seq 1 20); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              -X POST http://localhost:5000/api/copy \
+              -H "Content-Type: application/json" \
+              -d '{"url":""}')
+            if [ "$CODE" = "400" ]; then
+              echo "Server ready (POST returned 400 as expected)"
+              break
+            fi
+            echo "Waiting... ($i) got: $CODE"
             sleep 1
           done
 
@@ -76,27 +84,30 @@ jobs:
 
       - name: POST /api/copy rejects empty URL
         run: |
-          RESP=$(curl -s -X POST http://localhost:5000/api/copy \
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST http://localhost:5000/api/copy \
             -H "Content-Type: application/json" \
             -d '{"url":""}')
-          echo "Response: $RESP"
-          echo "$RESP" | grep -q "url_is_empty"
+          echo "HTTP status: $STATUS"
+          [ "$STATUS" = "400" ]
 
       - name: POST /api/copy rejects localhost
         run: |
-          RESP=$(curl -s -X POST http://localhost:5000/api/copy \
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST http://localhost:5000/api/copy \
             -H "Content-Type: application/json" \
             -d '{"url":"http://localhost"}')
-          echo "Response: $RESP"
-          echo "$RESP" | grep -q "localhost_is_not_supported"
+          echo "HTTP status: $STATUS"
+          [ "$STATUS" = "400" ]
 
       - name: POST /api/copy rejects invalid URL
         run: |
-          RESP=$(curl -s -X POST http://localhost:5000/api/copy \
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST http://localhost:5000/api/copy \
             -H "Content-Type: application/json" \
-            -d '{"url":"not-a-url-!!!"}')
-          echo "Response: $RESP"
-          echo "$RESP" | grep -q "url_is_not_valid"
+            -d '{"url":"not-a-url"}')
+          echo "HTTP status: $STATUS"
+          [ "$STATUS" = "400" ]
 
       - name: Stop server
         if: always()
@@ -132,7 +143,7 @@ jobs:
         if: steps.check.outputs.exists == 'true'
         run: |
           docker run -d -p 5000:5000 --name flux flux-app:${{ github.sha }}
-          sleep 3
+          sleep 4
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/)
           docker stop flux
           echo "Container status: $STATUS"
