@@ -11,128 +11,102 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # ──────────────────────────────────────────────
-  # 1. Lint
-  # ──────────────────────────────────────────────
   lint:
     name: Lint
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v4.2.2
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5.6.0
+      - uses: actions/setup-python@v5.6.0
         with:
           python-version: "3.12"
           cache: pip
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
 
       - name: Syntax check
-        run: python -m py_compile app.py && echo "app.py OK"
+        run: python -m py_compile app.py && echo "OK"
 
-      - name: Check imports
-        run: python -c "from app import app; print('imports OK')"
+      - name: Import check
+        run: python -c "from app import app; print('OK')"
 
-  # ──────────────────────────────────────────────
-  # 2. HTTP tests
-  # ──────────────────────────────────────────────
   test:
     name: Test
     runs-on: ubuntu-latest
     needs: lint
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v4.2.2
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5.6.0
+      - uses: actions/setup-python@v5.6.0
         with:
           python-version: "3.12"
           cache: pip
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
 
       - name: Start server
-        run: |
-          python app.py &
-          echo "SERVER_PID=$!" >> $GITHUB_ENV
-          sleep 2
-          for i in $(seq 1 15); do
-            CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-              --retry 0 --max-time 2 \
-              http://localhost:5000/ 2>/dev/null) || true
-            if [ "$CODE" = "200" ]; then
-              echo "Server ready"
-              break
-            fi
-            echo "Waiting... ($i) got: $CODE"
-            sleep 1
-          done
+        run: python app.py &
 
-      - name: GET / returns 200
+      - name: Wait for server
+        run: |
+          set +e
+          for i in $(seq 1 20); do
+            sleep 1
+            curl -sf http://localhost:5000/ > /dev/null 2>&1
+            if [ $? -eq 0 ]; then
+              echo "Server is up after ${i}s"
+              exit 0
+            fi
+            echo "Waiting... ($i)"
+          done
+          echo "Server did not start in time"
+          exit 1
+
+      - name: GET / → 200
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/)
           echo "Status: $STATUS"
           [ "$STATUS" = "200" ]
 
-      - name: POST /api/copy rejects empty URL
+      - name: POST empty URL → 400
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -X POST http://localhost:5000/api/copy \
             -H "Content-Type: application/json" \
             -d '{"url":""}')
-          echo "HTTP status: $STATUS"
+          echo "Status: $STATUS"
           [ "$STATUS" = "400" ]
 
-      - name: POST /api/copy rejects localhost
+      - name: POST localhost → 400
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -X POST http://localhost:5000/api/copy \
             -H "Content-Type: application/json" \
             -d '{"url":"http://localhost"}')
-          echo "HTTP status: $STATUS"
+          echo "Status: $STATUS"
           [ "$STATUS" = "400" ]
 
-      - name: POST /api/copy rejects invalid URL
+      - name: POST invalid URL → 400
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -X POST http://localhost:5000/api/copy \
             -H "Content-Type: application/json" \
             -d '{"url":"not-a-url"}')
-          echo "HTTP status: $STATUS"
+          echo "Status: $STATUS"
           [ "$STATUS" = "400" ]
 
-      - name: Stop server
-        if: always()
-        run: kill $SERVER_PID || true
-
-  # ──────────────────────────────────────────────
-  # 3. Docker build
-  # ──────────────────────────────────────────────
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
     needs: test
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v4.2.2
 
       - name: Check Dockerfile exists
         id: check
         run: |
-          if [ -f Dockerfile ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "Dockerfile not found, skipping"
-          fi
+          [ -f Dockerfile ] && echo "exists=true" >> $GITHUB_OUTPUT \
+                            || echo "exists=false" >> $GITHUB_OUTPUT
 
       - name: Build image
         if: steps.check.outputs.exists == 'true'
@@ -145,5 +119,5 @@ jobs:
           sleep 4
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/)
           docker stop flux
-          echo "Container status: $STATUS"
+          echo "Status: $STATUS"
           [ "$STATUS" = "200" ]
