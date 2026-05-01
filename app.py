@@ -52,7 +52,13 @@ def normalize_url(url: str) -> str | None:
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
     parsed = urlparse(url)
-    if not parsed.netloc:
+    hostname = parsed.hostname or ""
+    if not hostname:
+        return None
+    # hostname должен содержать точку и только допустимые символы
+    if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*[a-zA-Z0-9]$', hostname):
+        return None
+    if "." not in hostname:
         return None
     return urlunparse(parsed)
 
