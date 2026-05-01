@@ -18,7 +18,7 @@ from collections import deque
 
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, request, jsonify, send_file, render_template_from_string, send_from_directory
+from flask import Flask, request, jsonify, send_file, render_template_string, send_from_directory
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
