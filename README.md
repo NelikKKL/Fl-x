@@ -17,7 +17,8 @@ http://localhost:5000
 
 ```
 Flúx
-|──  README.md
+├── app.py
+├── README.md
 ├── requirements.txt  ← Зависимости Python
 └── static/
          ├── index.html
