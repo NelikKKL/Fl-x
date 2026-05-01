@@ -16,11 +16,17 @@ http://localhost:5000
 ## Структура проекта
 
 ```
-.
-├── app.py            ← Flask-сервер (бэкенд)
+Flúx
+|──  README.md
 ├── requirements.txt  ← Зависимости Python
 └── static/
-    └── index.html    ← Фронтенд (интерфейс)
+         ├── index.html
+         ├── perplex.css
+         ├── up-icon.svg
+         └── fonts/
+                  ├── CabinetGrotesk-Black.woff2
+                  └── instrument-serif-v5-latin-regular.woff2
+
 ```
 
 ## API
