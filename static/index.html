@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Flúx — Архиватор сайтов</title>
+<meta name="description" content="Скопируйте любой сайт в ZIP-архив бесплатно и онлайн."/>
+
+<!-- Local fonts -->
+<style>
+@font-face {
+  font-family: 'Cabinet Grotesk';
+  src: url('CabinetGrotesk-Black.woff2') format('woff2');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Instrument Serif';
+  src: url('instrument-serif-v5-latin-regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+</style>
+
+<!-- External CSS -->
+<link rel="stylesheet" href="perplex.css"/>
+
+<style>
+/* ═══════════════════════════════════════════════
+   RESET & BASE
+═══════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --black:     #06070a;
+  --void:      #090b0f;
+  --deep:      #0e1116;
+  --charcoal:  #141820;
+  --iron:      #1a1f28;
+  --steel:     #222830;
+  --smoke:     #2b3240;
+  --ash:       #363e4d;
+  --txt-1:     #edf0f5;
+  --txt-2:     #8892a0;
+  --txt-3:     #505a6a;
+  --glass-bg:        rgba(255,255,255,0.028);
+  --glass-bg-hover:  rgba(255,255,255,0.048);
+  --glass-border:    rgba(255,255,255,0.07);
+  --glass-border-hi: rgba(255,255,255,0.12);
+  --glass-shine:     rgba(255,255,255,0.05);
+  --accent:    #b8ccff;
+  --accent-dim: rgba(184,204,255,0.12);
+  --green:     #6dc98a;
+  --ff-display:'Cabinet Grotesk', sans-serif;
+  --ff-serif:  'Instrument Serif', serif;
+  --ff-mono:   ui-monospace, 'SF Mono', monospace;
+  --r-sm: 10px; --r-md: 15px; --r-lg: 22px; --r-xl: 32px;
+  --transition: cubic-bezier(.22,.68,0,1.2);
+}
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--ff-display);
+  background: var(--black);
+  color: var(--txt-1);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ═══════════════════════════════════════════════
+   BACKGROUND SCENE
+═══════════════════════════════════════════════ */
+.bg-scene {
+  position: fixed; inset: 0; z-index: 0;
+  overflow: hidden; pointer-events: none;
+}
+.bg-noise {
+  position: absolute; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  opacity: 0.03; mix-blend-mode: overlay;
+}
+.bg-grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.014) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.014) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, black 20%, transparent 100%);
+}
+.orb {
+  position: absolute; border-radius: 50%;
+  filter: blur(100px);
+  animation: orb-float linear infinite;
+  will-change: transform;
+}
+.orb-1 {
+  width: 900px; height: 900px;
+  background: radial-gradient(circle, rgba(40,60,130,0.18) 0%, transparent 70%);
+  top: -350px; left: -200px; animation-duration: 35s;
+}
+.orb-2 {
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(30,45,100,0.14) 0%, transparent 70%);
+  bottom: -120px; right: -150px;
+  animation-duration: 28s; animation-direction: reverse;
+}
+.orb-3 {
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(60,40,110,0.1) 0%, transparent 70%);
+  top: 40%; left: 55%;
+  animation-duration: 42s; animation-delay: -14s;
+}
+@keyframes orb-float {
+  0%   { transform: translate(0,0) rotate(0deg); }
+  25%  { transform: translate(50px,-40px) rotate(90deg); }
+  50%  { transform: translate(30px,60px) rotate(180deg); }
+  75%  { transform: translate(-40px,25px) rotate(270deg); }
+  100% { transform: translate(0,0) rotate(360deg); }
+}
+
+/* ═══════════════════════════════════════════════
+   LAYOUT
+═══════════════════════════════════════════════ */
+.page {
+  position: relative; z-index: 1;
+  max-width: 900px; margin: 0 auto;
+  padding: 0 28px 100px;
+}
+
+/* ═══════════════════════════════════════════════
+   GLASS BASE
+═══════════════════════════════════════════════ */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(40px) saturate(140%);
+  -webkit-backdrop-filter: blur(40px) saturate(140%);
+  border: 1px solid var(--glass-border);
+  position: relative; overflow: hidden;
+}
+.glass::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%, var(--glass-border-hi) 20%,
+    rgba(255,255,255,0.2) 50%,
+    var(--glass-border-hi) 80%, transparent 100%);
+  pointer-events: none;
+}
+.glass::after {
+  content: '';
+  position: absolute; top: 0; left: 0; bottom: 0; width: 1px;
+  background: linear-gradient(180deg,
+    transparent 0%, var(--glass-border-hi) 30%,
+    var(--glass-shine) 60%, transparent 100%);
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════
+   HEADER
+═══════════════════════════════════════════════ */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; margin-top: 24px;
+  border-radius: var(--r-xl);
+  box-shadow: 0 2px 40px rgba(0,0,0,0.6), inset 0 1px 0 var(--glass-border-hi);
+  animation: fade-down .6s var(--transition) both;
+}
+.logo {
+  display: flex; align-items: center; gap: 12px;
+  text-decoration: none; color: var(--txt-1);
+}
+.logo-mark {
+  width: 38px; height: 38px; border-radius: 12px;
+  background: linear-gradient(145deg, var(--steel), var(--charcoal));
+  border: 1px solid var(--glass-border-hi);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,.1);
+  flex-shrink: 0; overflow: hidden;
+}
+.logo-mark img { width: 24px; height: 24px; object-fit: contain; }
+.logo-text { display: flex; flex-direction: column; gap: 1px; }
+.logo-name { font-size: 1.05rem; font-weight: 900; letter-spacing: -0.5px; line-height: 1; }
+.logo-sub  { font-size: .62rem; font-weight: 500; color: var(--txt-3); letter-spacing: .1em; text-transform: uppercase; }
+
+.header-right { display: flex; align-items: center; gap: 10px; }
+.header-badge {
+  font-size: .68rem; font-weight: 600; color: var(--txt-3);
+  background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border);
+  border-radius: 100px; padding: 5px 14px; letter-spacing: .05em;
+}
+.header-status {
+  display: flex; align-items: center; gap: 7px;
+  font-size: .68rem; font-weight: 600; color: var(--green);
+  background: rgba(109,201,138,0.06); border: 1px solid rgba(109,201,138,0.18);
+  border-radius: 100px; padding: 5px 13px;
+}
+.pulse-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green); box-shadow: 0 0 8px var(--green);
+  animation: pulse-dot 2.5s ease-in-out infinite; flex-shrink: 0;
+}
+@keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.55)} }
+
+/* ═══════════════════════════════════════════════
+   HERO
+═══════════════════════════════════════════════ */
+.hero {
+  text-align: center; padding: 88px 0 60px;
+  animation: fade-up .85s var(--transition) .1s both;
+}
+.hero h1 {
+  font-family: var(--ff-display);
+  font-size: clamp(3rem, 8vw, 5.8rem);
+  font-weight: 900; letter-spacing: -3px; line-height: .9;
+  color: var(--txt-1); margin-bottom: 0;
+}
+.hero h1 em {
+  font-family: var(--ff-serif); font-style: italic; font-weight: 400;
+  color: var(--txt-3); letter-spacing: -1px;
+}
+.hero-sub {
+  margin-top: 28px; font-size: 1rem; font-weight: 400;
+  color: var(--txt-3); line-height: 1.75;
+  max-width: 420px; margin-left: auto; margin-right: auto;
+  letter-spacing: .01em;
+}
+.hero-tags {
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; flex-wrap: wrap; margin-top: 24px;
+}
+.hero-tag {
+  font-size: .68rem; font-weight: 600; color: var(--txt-3);
+  letter-spacing: .08em; text-transform: uppercase;
+  padding: 4px 12px; border-radius: 100px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255,255,255,0.025);
+}
+.hero-tag-sep { color: var(--txt-3); font-size: .6rem; opacity: .4; }
+
+/* ═══════════════════════════════════════════════
+   MAIN CARD
+═══════════════════════════════════════════════ */
+.main-card {
+  border-radius: var(--r-xl); padding: 32px 32px 28px;
+  box-shadow:
+    0 50px 100px rgba(0,0,0,.8),
+    0 0 0 1px rgba(255,255,255,.04),
+    inset 0 1px 0 var(--glass-border-hi),
+    inset 0 -1px 0 rgba(0,0,0,.4);
+  animation: fade-up .85s var(--transition) .2s both;
+}
+
+/* ── URL Row ── */
+.input-row { display: flex; gap: 10px; margin-bottom: 16px; }
+.url-wrap { flex: 1; position: relative; }
+.url-icon {
+  position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+  color: var(--txt-3); pointer-events: none; transition: color .2s;
+  display: flex; align-items: center;
+}
+.url-input {
+  width: 100%; height: 52px;
+  background: rgba(0,0,0,0.45);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-md);
+  padding: 0 18px 0 44px;
+  font-family: var(--ff-display); font-size: .9rem; font-weight: 400;
+  color: var(--txt-1); outline: none;
+  transition: border-color .2s, box-shadow .25s, background .2s;
+  backdrop-filter: blur(12px); caret-color: var(--accent);
+}
+.url-input::placeholder { color: var(--txt-3); }
+.url-input:focus {
+  border-color: rgba(184,204,255,0.2);
+  background: rgba(0,0,0,.6);
+  box-shadow: 0 0 0 3px rgba(184,204,255,.05), 0 0 28px rgba(184,204,255,.04);
+}
+.url-wrap:has(.url-input:focus) .url-icon { color: var(--txt-2); }
+
+/* ── Download Button ── */
+.btn-dl {
+  height: 52px; padding: 0 28px;
+  background: linear-gradient(170deg, var(--steel) 0%, var(--iron) 100%);
+  border: 1px solid var(--glass-border-hi);
+  border-radius: var(--r-md);
+  font-family: var(--ff-display); font-size: .86rem; font-weight: 900;
+  letter-spacing: .03em; color: var(--txt-1);
+  cursor: pointer; white-space: nowrap;
+  display: flex; align-items: center; gap: 8px;
+  position: relative; overflow: hidden;
+  transition: transform .15s ease, box-shadow .2s ease, opacity .2s;
+  box-shadow:
+    0 4px 24px rgba(0,0,0,.6),
+    inset 0 1px 0 rgba(255,255,255,.12),
+    inset 0 -1px 0 rgba(0,0,0,.3);
+}
+.btn-dl::before {
+  content: '';
+  position: absolute; top: 0; left: -120%; bottom: 0; width: 60%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent);
+  transform: skewX(-18deg);
+  transition: left .6s ease; pointer-events: none;
+}
+.btn-dl:hover::before { left: 160%; }
+.btn-dl:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 36px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.18);
+}
+.btn-dl:active  { transform: scale(.975); }
+.btn-dl:disabled{ opacity: .35; cursor: not-allowed; transform: none !important; }
+.btn-dl .spinner {
+  width: 15px; height: 15px;
+  border: 2px solid rgba(255,255,255,.15);
+  border-top-color: rgba(255,255,255,.65);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  display: none; flex-shrink: 0;
+}
+.btn-dl.loading .spinner  { display: block; }
+.btn-dl.loading .btn-text { display: none; }
+.btn-dl.loading .btn-icon { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Options ── */
+.options-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+@media (max-width:640px) {
+  .options-grid { grid-template-columns: 1fr; }
+  .input-row { flex-direction: column; }
+  .btn-dl { width: 100%; justify-content: center; }
+  .hero h1 { letter-spacing: -2px; }
+}
+.opt-label {
+  display: flex; align-items: center; gap: 10px;
+  cursor: pointer; padding: 11px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-sm);
+  font-size: .78rem; font-weight: 600; color: var(--txt-3);
+  background: rgba(0,0,0,.28); backdrop-filter: blur(8px);
+  transition: border-color .2s, background .2s, color .2s;
+  user-select: none; position: relative; overflow: hidden;
+}
+.opt-label::before {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,.02), transparent);
+  pointer-events: none;
+}
+.opt-label:hover { border-color: rgba(255,255,255,.1); color: var(--txt-2); background: rgba(255,255,255,.035); }
+.opt-label:has(input:checked) {
+  border-color: rgba(184,204,255,.22);
+  background: rgba(184,204,255,.055);
+  color: var(--txt-1);
+  box-shadow: inset 0 1px 0 rgba(184,204,255,.07);
+}
+.opt-cb {
+  appearance: none; width: 17px; height: 17px;
+  border: 1.5px solid var(--ash); border-radius: 5px;
+  background: rgba(0,0,0,.4); cursor: pointer;
+  flex-shrink: 0; transition: background .15s, border-color .15s;
+  position: relative;
+}
+.opt-cb:checked { background: rgba(184,204,255,.85); border-color: rgba(184,204,255,.85); }
+.opt-cb:checked::after {
+  content: ''; display: block; position: absolute;
+  top: 2px; left: 4px; width: 5px; height: 8px;
+  border: 1.5px solid #0a0c12;
+  border-top: none; border-left: none;
+  transform: rotate(45deg);
+}
+
+/* ── Progress ── */
+.progress-wrap { margin-top: 20px; display: none; }
+.progress-wrap.active { display: block; }
+.progress-track {
+  height: 2px; background: rgba(255,255,255,.05);
+  border-radius: 99px; overflow: hidden; margin-bottom: 10px;
+}
+.progress-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, var(--ash), rgba(184,204,255,.65), rgba(255,255,255,.75));
+  border-radius: 99px; transition: width .6s ease;
+  position: relative;
+}
+.progress-fill::after {
+  content: ''; position: absolute;
+  top: -3px; right: 0; width: 24px; height: 8px;
+  background: white; border-radius: 99px;
+  filter: blur(6px); opacity: .6;
+}
+.progress-txt {
+  font-size: .73rem; color: var(--txt-3);
+  text-align: center; font-weight: 600; letter-spacing: .03em;
+}
+
+/* ═══════════════════════════════════════════════
+   DIVIDER
+═══════════════════════════════════════════════ */
+.divider {
+  display: flex; align-items: center; gap: 16px;
+  margin: 52px 0 28px;
+  animation: fade-up .8s var(--transition) .35s both;
+}
+.divider-line { flex: 1; height: 1px; background: var(--glass-border); }
+.divider-label {
+  font-size: .63rem; font-weight: 700; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--txt-3); white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════
+   FEATURES GRID — improved 2-col layout
+═══════════════════════════════════════════════ */
+.features-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 10px; margin-bottom: 52px;
+  animation: fade-up .8s var(--transition) .4s both;
+}
+@media (max-width:600px) { .features-grid { grid-template-columns: 1fr; } }
+
+.feat-card {
+  border-radius: var(--r-lg); padding: 22px 22px 20px;
+  display: flex; align-items: flex-start; gap: 16px;
+  box-shadow: 0 6px 30px rgba(0,0,0,.4), inset 0 1px 0 var(--glass-border-hi);
+  transition: transform .25s, box-shadow .25s, background .2s;
+}
+.feat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 48px rgba(0,0,0,.55), inset 0 1px 0 var(--glass-border-hi);
+  background: var(--glass-bg-hover);
+}
+.feat-ico {
+  width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
+  background: rgba(255,255,255,.05); border: 1px solid var(--glass-border);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07);
+}
+.feat-ico svg { width: 18px; height: 18px; color: rgba(184,204,255,.7); }
+.feat-body { min-width: 0; }
+.feat-title { font-size: .86rem; font-weight: 800; color: var(--txt-1); margin-bottom: 4px; letter-spacing: -.1px; }
+.feat-desc  { font-size: .75rem; color: var(--txt-3); line-height: 1.6; font-weight: 400; }
+
+/* ═══════════════════════════════════════════════
+   STEPS
+═══════════════════════════════════════════════ */
+.steps {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px; margin-bottom: 60px;
+  animation: fade-up .8s var(--transition) .5s both;
+}
+@media (max-width:600px) { .steps { grid-template-columns: 1fr; } }
+
+.step-card {
+  border-radius: var(--r-lg); padding: 26px 22px 22px;
+  box-shadow: 0 6px 36px rgba(0,0,0,.4), inset 0 1px 0 var(--glass-border-hi);
+  transition: transform .25s, box-shadow .25s;
+  position: relative;
+}
+.step-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 20px 56px rgba(0,0,0,.55), inset 0 1px 0 var(--glass-border-hi);
+}
+.step-connector {
+  position: absolute; top: 36px; right: -8px;
+  width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2;
+}
+.step-connector svg { width: 12px; height: 12px; color: var(--txt-3); opacity: .5; }
+.step-num {
+  font-size: .6rem; font-weight: 800; letter-spacing: .14em;
+  color: var(--txt-3); text-transform: uppercase; margin-bottom: 14px;
+  font-family: var(--ff-mono);
+}
+.step-ico {
+  width: 38px; height: 38px; border-radius: 10px;
+  background: rgba(255,255,255,.04); border: 1px solid var(--glass-border);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+}
+.step-ico svg { width: 17px; height: 17px; color: var(--txt-2); }
+.step-title { font-size: .86rem; font-weight: 800; color: var(--txt-1); margin-bottom: 6px; letter-spacing: -.1px; }
+.step-desc  { font-size: .74rem; color: var(--txt-3); line-height: 1.65; font-weight: 400; }
+
+/* ═══════════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════════ */
+.toast {
+  position: fixed; bottom: 28px; right: 28px;
+  padding: 12px 18px; border-radius: var(--r-md);
+  font-size: .82rem; font-weight: 600; max-width: 340px;
+  z-index: 999; backdrop-filter: blur(36px); -webkit-backdrop-filter: blur(36px);
+  transform: translateY(16px) scale(.97); opacity: 0;
+  transition: opacity .28s, transform .28s; pointer-events: none;
+  box-shadow: 0 18px 52px rgba(0,0,0,.7);
+}
+.toast.show { opacity: 1; transform: translateY(0) scale(1); pointer-events: all; }
+.toast-success { background: rgba(10,20,15,.95); border: 1px solid rgba(109,201,138,.22); color: var(--green); }
+.toast-error   { background: rgba(20,10,12,.95); border: 1px solid rgba(210,85,95,.22); color: #d45560; }
+.toast-info    { background: rgba(10,14,24,.95); border: 1px solid rgba(184,204,255,.16); color: var(--accent); }
+
+/* ═══════════════════════════════════════════════
+   FOOTER
+═══════════════════════════════════════════════ */
+.footer {
+  border-top: 1px solid var(--glass-border);
+  padding-top: 28px; display: flex;
+  align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+  animation: fade-up .8s var(--transition) .6s both;
+}
+.footer-copy { font-size: .73rem; color: var(--txt-3); }
+.footer-copy span { color: var(--txt-3); margin: 0 4px; }
+.footer-cmd {
+  font-family: var(--ff-mono); font-size: .68rem; color: var(--txt-3);
+  background: rgba(255,255,255,.04); border: 1px solid var(--glass-border);
+  border-radius: 7px; padding: 5px 12px; letter-spacing: .02em;
+}
+
+/* ═══════════════════════════════════════════════
+   KEYFRAMES
+═══════════════════════════════════════════════ */
+@keyframes fade-up   { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fade-down { from{opacity:0;transform:translateY(-12px)} to{opacity:1;transform:translateY(0)} }
+</style>
+</head>
+<body>
+
+<!-- Background -->
+<div class="bg-scene">
+  <div class="bg-noise"></div>
+  <div class="bg-grid"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
+<div class="page">
+
+  <!-- Header -->
+  <header class="header glass">
+    <a class="logo" href="/">
+      <div class="logo-mark">
+        <img src="up-icon.svg" alt="Flúx logo"/>
+      </div>
+      <div class="logo-text">
+        <div class="logo-name">Flúx</div>
+        <div class="logo-sub">Site Archiver</div>
+      </div>
+    </a>
+    <div class="header-right">
+      <div class="header-status">
+        <span class="pulse-dot"></span>
+        Онлайн
+      </div>
+      <div class="header-badge">Бесплатно</div>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="hero">
+    <h1>Скопируйте<br/><em>любой сайт</em></h1>
+    <p class="hero-sub">Вставьте ссылку и получите полный ZIP-архив — HTML, стили, скрипты, изображения и шрифты.</p>
+    <div class="hero-tags">
+      <span class="hero-tag">Без регистрации</span>
+      <span class="hero-tag-sep">·</span>
+      <span class="hero-tag">ZIP за секунды</span>
+      <span class="hero-tag-sep">·</span>
+      <span class="hero-tag">Локальный сервис</span>
+    </div>
+  </section>
+
+  <!-- Main Card -->
+  <div class="main-card glass">
+    <div class="input-row">
+      <div class="url-wrap">
+        <svg class="url-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+        <input id="urlInput" class="url-input" type="url"
+          placeholder="https://example.com"
+          autocomplete="off" spellcheck="false"/>
+      </div>
+      <button class="btn-dl" id="dlBtn" onclick="startCopy()">
+        <div class="spinner"></div>
+        <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span class="btn-text">Скачать</span>
+      </button>
+    </div>
+
+    <div class="options-grid">
+      <label class="opt-label">
+        <input class="opt-cb" type="checkbox" id="optRename"/>
+        Переименовать файлы
+      </label>
+      <label class="opt-label">
+        <input class="opt-cb" type="checkbox" id="optMobile"/>
+        Мобильная версия
+      </label>
+      <label class="opt-label">
+        <input class="opt-cb" type="checkbox" id="optCrawl"/>
+        Все страницы сайта
+      </label>
+    </div>
+
+    <div class="progress-wrap" id="progWrap">
+      <div class="progress-track">
+        <div class="progress-fill" id="progFill"></div>
+      </div>
+      <div class="progress-txt" id="progTxt">Подключаемся…</div>
+    </div>
+  </div>
+
+  <!-- Features -->
+  <div class="divider">
+    <div class="divider-line"></div>
+    <div class="divider-label">Что скачивается</div>
+    <div class="divider-line"></div>
+  </div>
+
+  <div class="features-grid">
+    <div class="feat-card glass">
+      <div class="feat-ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      </div>
+      <div class="feat-body">
+        <div class="feat-title">HTML &amp; структура</div>
+        <div class="feat-desc">Полная разметка страницы с сохранением иерархии тегов и атрибутов.</div>
+      </div>
+    </div>
+    <div class="feat-card glass">
+      <div class="feat-ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      </div>
+      <div class="feat-body">
+        <div class="feat-title">CSS &amp; JavaScript</div>
+        <div class="feat-desc">Все стили и скрипты, включая подключённые через CDN и inline.</div>
+      </div>
+    </div>
+    <div class="feat-card glass">
+      <div class="feat-ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      </div>
+      <div class="feat-body">
+        <div class="feat-title">Изображения</div>
+        <div class="feat-desc">Фотографии, иконки, SVG и фоновые изображения из CSS.</div>
+      </div>
+    </div>
+    <div class="feat-card glass">
+      <div class="feat-ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
+      </div>
+      <div class="feat-body">
+        <div class="feat-title">Шрифты &amp; ZIP</div>
+        <div class="feat-desc">Веб-шрифты .woff2/.woff и готовый архив для скачивания.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Steps -->
+  <div class="divider" style="margin-bottom: 28px;">
+    <div class="divider-line"></div>
+    <div class="divider-label">Как это работает</div>
+    <div class="divider-line"></div>
+  </div>
+
+  <div class="steps">
+    <div class="step-card glass">
+      <div class="step-num">01</div>
+      <div class="step-ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </div>
+      <div class="step-title">Вставьте ссылку</div>
+      <div class="step-desc">Скопируйте URL из браузера и вставьте в поле выше.</div>
+    </div>
+    <div class="step-card glass">
+      <div class="step-num">02</div>
+      <div class="step-ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+      </div>
+      <div class="step-title">Копирование</div>
+      <div class="step-desc">Сервис скачает HTML, стили, скрипты, картинки и шрифты.</div>
+    </div>
+    <div class="step-card glass">
+      <div class="step-num">03</div>
+      <div class="step-ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </div>
+      <div class="step-title">Скачайте ZIP</div>
+      <div class="step-desc">Готовый архив автоматически сохранится на ваш компьютер.</div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-copy">
+      Flúx<span>·</span>Локальный сервис<span>·</span>Бесплатно
+    </div>
+    <code class="footer-cmd">python app.py → localhost:5000</code>
+  </footer>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+const urlInput = document.getElementById('urlInput');
+const dlBtn    = document.getElementById('dlBtn');
+const progWrap = document.getElementById('progWrap');
+const progFill = document.getElementById('progFill');
+const progTxt  = document.getElementById('progTxt');
+const toast    = document.getElementById('toast');
+let toastTimer;
+
+function showToast(msg, type = 'info') {
+  toast.textContent = msg;
+  toast.className   = `toast toast-${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 5200);
+}
+function setProgress(pct, label) {
+  progFill.style.width = pct + '%';
+  if (label) progTxt.textContent = label;
+}
+function setLoading(on) {
+  dlBtn.disabled = on;
+  dlBtn.classList.toggle('loading', on);
+  progWrap.classList.toggle('active', on);
+  if (on) setProgress(10, 'Подключаемся к сайту…');
+}
+async function startCopy() {
+  const url = urlInput.value.trim();
+  if (!url) { showToast('Введите адрес сайта', 'error'); urlInput.focus(); return; }
+  setLoading(true);
+  showToast('Начинаем копирование…', 'info');
+  const steps = [
+    [22,  'Загружаем HTML…'],
+    [42,  'Скачиваем CSS и JS…'],
+    [62,  'Загружаем изображения…'],
+    [80,  'Скачиваем шрифты…'],
+    [92,  'Упаковываем ZIP…'],
+  ];
+  let i = 0;
+  const ticker = setInterval(() => { if (i < steps.length) setProgress(...steps[i++]); }, 2000);
+  try {
+    const res = await fetch('/api/copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url,
+        rename_files:    document.getElementById('optRename').checked,
+        mobile_version:  document.getElementById('optMobile').checked,
+        crawl_all_pages: document.getElementById('optCrawl').checked,
+      }),
+    });
+    clearInterval(ticker);
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.message || `Ошибка ${res.status}`);
+    }
+    setProgress(100, 'Готово! Скачиваем архив…');
+    const blob = await res.blob();
+    const name = (res.headers.get('content-disposition') || '')
+      .match(/filename="?([^"]+)"?/)?.[1] || 'website.zip';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    URL.revokeObjectURL(a.href);
+    showToast(`✓ Архив «${name}» скачан!`, 'success');
+  } catch (e) {
+    clearInterval(ticker);
+    showToast('Ошибка: ' + e.message, 'error');
+    setProgress(0, '');
+  } finally { setLoading(false); }
+}
+urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') startCopy(); });
+</script>
+</body>
+</html>

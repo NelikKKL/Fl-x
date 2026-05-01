@@ -1,0 +1,126 @@
+name: 🌐 Flúx — Run & Test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:        # ручной запуск из интерфейса GitHub
+
+jobs:
+  # ──────────────────────────────────────────────
+  # 1. Lint & smoke-test (быстрая проверка кода)
+  # ──────────────────────────────────────────────
+  lint:
+    name: 🔍 Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Syntax check (py_compile)
+        run: python -m py_compile app.py && echo "✅ app.py OK"
+
+      - name: Check imports
+        run: python -c "import app; print('✅ imports OK')"
+
+  # ──────────────────────────────────────────────
+  # 2. Запуск сервера + базовые HTTP-тесты
+  # ──────────────────────────────────────────────
+  test:
+    name: 🧪 Test
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Start server in background
+        run: |
+          python app.py &
+          echo "SERVER_PID=$!" >> $GITHUB_ENV
+          # ждём пока сервер поднимется
+          for i in $(seq 1 15); do
+            curl -sf http://localhost:5000/ > /dev/null && break
+            echo "Waiting... ($i)"
+            sleep 1
+          done
+
+      - name: Test — GET / returns 200
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/)
+          echo "Status: $STATUS"
+          [ "$STATUS" = "200" ]
+
+      - name: Test — POST /api/copy validates empty URL
+        run: |
+          RESP=$(curl -s -X POST http://localhost:5000/api/copy \
+            -H "Content-Type: application/json" \
+            -d '{"url":""}')
+          echo "Response: $RESP"
+          echo "$RESP" | grep -q "url_is_empty"
+
+      - name: Test — POST /api/copy rejects localhost
+        run: |
+          RESP=$(curl -s -X POST http://localhost:5000/api/copy \
+            -H "Content-Type: application/json" \
+            -d '{"url":"http://localhost"}')
+          echo "Response: $RESP"
+          echo "$RESP" | grep -q "localhost_is_not_supported"
+
+      - name: Test — POST /api/copy rejects invalid URL
+        run: |
+          RESP=$(curl -s -X POST http://localhost:5000/api/copy \
+            -H "Content-Type: application/json" \
+            -d '{"url":"not-a-url-!!!"}')
+          echo "Response: $RESP"
+          echo "$RESP" | grep -q "url_is_not_valid"
+
+      - name: Stop server
+        if: always()
+        run: kill $SERVER_PID || true
+
+  # ──────────────────────────────────────────────
+  # 3. Docker build (опционально, если есть Dockerfile)
+  # ──────────────────────────────────────────────
+  docker:
+    name: 🐳 Docker Build
+    runs-on: ubuntu-latest
+    needs: test
+    if: ${{ hashFiles('Dockerfile') != '' }}   # только если Dockerfile существует
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t flux-app:${{ github.sha }} .
+
+      - name: Smoke-test container
+        run: |
+          docker run -d -p 5000:5000 --name flux flux-app:${{ github.sha }}
+          sleep 3
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/)
+          docker stop flux
+          echo "Container status: $STATUS"
+          [ "$STATUS" = "200" ]
